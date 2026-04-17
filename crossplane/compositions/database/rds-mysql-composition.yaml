@@ -1,0 +1,22 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: xmysqlinstances.aws.platform.upbound.io
+spec:
+  compositeTypeRef:
+    apiVersion: aws.platform.upbound.io/v1alpha1
+    kind: XMySQLInstance
+  resources:
+    - name: rds-instance
+      base:
+        apiVersion: database.aws.crossplane.io/v1beta1
+        kind: RDSInstance
+        spec:
+          forProvider:
+            region: us-east-1
+            dbInstanceClass: db.t3.micro
+            engine: mysql
+            engineVersion: "8.0"
+            masterUsername: admin
+            publiclyAccessible: false
+            allocatedStorage: 20
