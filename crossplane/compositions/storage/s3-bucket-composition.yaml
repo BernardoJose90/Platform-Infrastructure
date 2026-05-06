@@ -29,7 +29,7 @@ spec:
               kind: BucketPublicAccessBlock
               spec:
                 forProvider:
-                  region: us-east-1
+                  region: eu-west-1
                   blockPublicAcls: true
                   blockPublicPolicy: true
                   ignorePublicAcls: true
