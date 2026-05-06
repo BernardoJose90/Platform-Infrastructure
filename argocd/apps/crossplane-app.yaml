@@ -6,7 +6,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/your-org/platform-infrastructure.git
+    repoURL: https://github.com/BernardoJose90/Platform-Infrastructure.git
     targetRevision: main
     path: crossplane
   destination:

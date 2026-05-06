@@ -6,11 +6,33 @@ spec:
   compositeTypeRef:
     apiVersion: aws.platform.upbound.io/v1alpha1
     kind: XBucket
-  resources:
-    - name: s3-bucket
-      base:
-        apiVersion: s3.aws.crossplane.io/v1beta1
-        kind: Bucket
-        spec:
-          forProvider:
-            acl: private
+  mode: Pipeline
+  pipeline:
+    - step: patch-and-transform
+      functionRef:
+        name: function-patch-and-transform
+      input:
+        apiVersion: pt.fn.crossplane.io/v1beta1
+        kind: Resources
+        resources:
+          - name: s3-bucket
+            base:
+              apiVersion: s3.aws.upbound.io/v1beta1    
+              kind: Bucket
+              spec:
+                forProvider:
+                  region: eu-west-1                    
+                  
+          - name: s3-public-access-block
+            base:
+              apiVersion: s3.aws.upbound.io/v1beta1    
+              kind: BucketPublicAccessBlock
+              spec:
+                forProvider:
+                  region: us-east-1
+                  blockPublicAcls: true
+                  blockPublicPolicy: true
+                  ignorePublicAcls: true
+                  restrictPublicBuckets: true
+                  bucketSelector:
+                    matchControllerRef: true

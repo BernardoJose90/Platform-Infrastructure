@@ -6,17 +6,30 @@ spec:
   compositeTypeRef:
     apiVersion: aws.platform.upbound.io/v1alpha1
     kind: XMySQLInstance
-  resources:
-    - name: rds-instance
-      base:
-        apiVersion: database.aws.crossplane.io/v1beta1
-        kind: RDSInstance
-        spec:
-          forProvider:
-            region: us-east-1
-            dbInstanceClass: db.t3.micro
-            engine: mysql
-            engineVersion: "8.0"
-            masterUsername: admin
-            publiclyAccessible: false
-            allocatedStorage: 20
+  mode: Pipeline
+  pipeline:
+    - step: patch-and-transform
+      functionRef:
+        name: function-patch-and-transform
+      input:
+        apiVersion: pt.fn.crossplane.io/v1beta1
+        kind: Resources
+        resources:
+          - name: rds-instance
+            base:
+              apiVersion: rds.aws.upbound.io/v1beta2   
+              kind: Instance                             
+              spec:
+                forProvider:
+                  region: us-east-1
+                  instanceClass: db.t3.micro            
+                  engine: mysql
+                  engineVersion: "8.0"
+                  username: admin                        
+                  autoGeneratePassword: true            
+                  publiclyAccessible: false
+                  allocatedStorage: 20
+                  skipFinalSnapshot: true                
+                writeConnectionSecretToRef:
+                  namespace: crossplane-system
+                  name: rds-mysql-conn

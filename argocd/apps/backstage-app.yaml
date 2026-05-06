@@ -6,7 +6,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/your-org/backstage-config.git
+    repoURL: https://github.com/BernardoJose90/Developer-Portal.git
     targetRevision: main
     path: .
   destination:

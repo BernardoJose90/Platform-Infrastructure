@@ -1,0 +1,1 @@
+1-platform-project.yaml: An ArgoCD AppProject that defines permissions and boundaries for your platform it Restricts which repositories, namespaces, and cluster resources ArgoCD Applications can access.
