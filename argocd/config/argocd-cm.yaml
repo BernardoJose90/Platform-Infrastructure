@@ -1,0 +1,9 @@
+kind: ConfigMap
+metadata:
+  name: argocd-cm
+data:
+  # custom health checks
+  # resource exclusions
+  # repository settings
+  # SSO configuration
+  # OIDC settings

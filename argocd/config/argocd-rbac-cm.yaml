@@ -1,0 +1,12 @@
+kind: ConfigMap
+metadata:
+  name: argocd-rbac-cm
+data:
+  policy.default: role:readonly
+  policy.csv: |
+    p, role:platform-team, applications, *, */*, allow
+    p, role:developer, applications, get, */*, allow
+    p, role:developer, applications, sync, dev/*, allow
+    
+    g, platform-engineer, role:platform-team
+    g, developer, role:developer
