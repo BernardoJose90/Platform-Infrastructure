@@ -45,3 +45,8 @@ spec:
                   restrictPublicBuckets: true
                   bucketSelector:
                     matchControllerRef: true
+            readinessChecks:
+              - type: MatchCondition
+                matchCondition:
+                  type: Ready
+                  status: "True"
