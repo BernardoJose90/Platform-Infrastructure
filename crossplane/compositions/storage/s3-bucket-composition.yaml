@@ -43,10 +43,14 @@ spec:
                   blockPublicPolicy: true
                   ignorePublicAcls: true
                   restrictPublicBuckets: true
-                  bucketSelector:
-                    matchControllerRef: true
-            readinessChecks:
-              - type: MatchCondition
-                matchCondition:
-                  type: Ready
-                  status: "True"
+                  bucketRef:
+                    name: ""
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.uid
+                toFieldPath: spec.forProvider.bucketRef.name
+                transforms:
+                  - type: string
+                    string:
+                      type: Format
+                      fmt: "bucket-%s"
