@@ -1,9 +1,9 @@
 apiVersion: s3.aws.upbound.io/v1beta1
 kind: Bucket
 metadata:
-  name: my-crossplane-bucket-12345
+  name: bernardo-crossplane-s3-2526
   annotations:
-    crossplane.io/external-name: my-crossplane-bucket-12345
+    crossplane.io/external-name: bernardo-crossplane-s3-2526
 spec:
   forProvider:
     region: us-east-1
