@@ -1,0 +1,11 @@
+apiVersion: s3.aws.upbound.io/v1beta1
+kind: Bucket
+metadata:
+  name: my-crossplane-bucket-12345   # must be globally unique
+  annotations:
+    crossplane.io/external-name: my-crossplane-bucket-12345
+spec:
+  forProvider:
+    region: us-east-1
+  providerConfigRef:
+    name: default
