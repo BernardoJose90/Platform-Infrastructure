@@ -70,10 +70,7 @@ spec:
                       description: "AWS region to deploy the S3 bucket in."
                       enum:
                         - us-east-1
-                        - us-west-2
                         - eu-west-1
-                        - eu-central-1
-                        - ap-southeast-1
                       default: us-east-1
 
                     bucketName:
