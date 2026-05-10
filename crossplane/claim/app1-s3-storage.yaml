@@ -2,7 +2,7 @@ apiVersion: aws.platform.upbound.io/v1alpha1
 kind: Bucket
 metadata:
   name: my-app-storage
-  namespace: dev-tem
+  namespace: dev-team
   labels:
     app: my-app
     env: production
