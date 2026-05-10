@@ -1,0 +1,62 @@
+apiVersion: aws.platform.upbound.io/v1alpha1
+kind: Bucket
+metadata:
+  # Name of the Claim — does not have to match the bucket name
+  name: my-app-storage
+  # Claims are namespace-scoped — deploy into your team's namespace
+  namespace: my-team
+  labels:
+    app: my-app
+    env: production
+
+spec:
+  # ----------------------------------------------------------------
+  # Parameters — maps to spec.parameters in the XRD
+  # ----------------------------------------------------------------
+  parameters:
+
+    # Required: AWS region (must be one of the approved regions)
+    region: us-east-1
+
+    # Optional: custom bucket name — must be globally unique in AWS
+    # If omitted, Crossplane auto-generates one from the UID
+    # bucketName: my-company-my-app-storage-prod
+
+    # Enable versioning for production workloads
+    versioning: true
+
+    # Encryption is on by default (AES-256)
+    # Uncomment and provide a KMS key ARN to use SSE-KMS instead
+    # encryption:
+    #   enabled: true
+    #   kmsKeyId: "arn:aws:kms:us-east-1:123456789012:key/your-key-id"
+
+    # Block all public access — keep true unless static website hosting
+    blockPublicAccess: true
+
+    # Lifecycle rules — expire objects after 1 year
+    lifecycle:
+      enabled: true
+      expirationDays: 365
+      # Delete old versions after 90 days (only applies when versioning: true)
+      noncurrentVersionExpirationDays: 90
+
+    # Cost allocation and governance tags
+    tags:
+      cost-center: "engineering"
+      project: "my-app"
+      team: "my-team"
+
+    # What happens when this Claim is deleted
+    # Delete  = removes the real AWS bucket (default)
+    # Orphan  = removes the Claim but leaves the bucket in AWS
+    deletionPolicy: Delete
+
+  # ----------------------------------------------------------------
+  # Connection Secret
+  # Crossplane writes bucketName, bucketArn, region, endpoint
+  # into this Secret in the same namespace as the Claim
+  # Your app can then mount it as env vars or a volume
+  # ----------------------------------------------------------------
+  writeConnectionSecretToRef:
+    name: my-app-storage-secret

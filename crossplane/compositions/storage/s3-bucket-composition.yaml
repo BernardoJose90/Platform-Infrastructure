@@ -2,12 +2,34 @@ apiVersion: apiextensions.crossplane.io/v1
 kind: Composition
 metadata:
   name: xbuckets.aws.platform.upbound.io
+  labels:
+    platform/capability: storage
+    platform/provider: aws
+    platform/tier: standard
+  annotations:
+    platform/owner: "platform-engineering"
+    platform/slack-channel: "#platform-support"
+
 spec:
+  # Links this Composition to the XRD we defined
   compositeTypeRef:
     apiVersion: aws.platform.upbound.io/v1alpha1
     kind: XBucket
+
+  # Pipeline mode allows chaining multiple functions (modern approach)
+  # Preferred over Resources mode which is being deprecated
   mode: Pipeline
+
+  # writeConnectionSecretsToNamespace is set on the Claim level
+  # but we define which keys to expose here via the bucket resource below
+
   pipeline:
+
+    # ----------------------------------------------------------------
+    # STEP 1 — Patch and Transform
+    # Handles: bucket creation, public access block, encryption,
+    #          versioning, lifecycle, CORS, and tagging
+    # ----------------------------------------------------------------
     - step: patch-and-transform
       functionRef:
         name: function-patch-and-transform
@@ -15,14 +37,43 @@ spec:
         apiVersion: pt.fn.crossplane.io/v1beta1
         kind: Resources
         resources:
+
+          # ============================================================
+          # RESOURCE 1: S3 Bucket (core resource)
+          # ============================================================
           - name: s3-bucket
             base:
               apiVersion: s3.aws.upbound.io/v1beta1
               kind: Bucket
               spec:
+                # deletionPolicy is patched from spec.parameters.deletionPolicy
+                deletionPolicy: Delete
                 forProvider:
                   region: us-east-1
+                  # Force destroy allows deleting non-empty buckets
+                  # Set to false in production if you want extra safety
+                  forceDestroy: false
+                # Write bucket outputs back as a connection secret
+                writeConnectionSecretToRef:
+                  namespace: crossplane-system
+                  name: "" # patched below from metadata.uid
+
             patches:
+              # --- Region: from developer input ---
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.region
+                toFieldPath: spec.forProvider.region
+
+              # --- Bucket name: use custom name if provided, else generate from UID ---
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.bucketName
+                toFieldPath: metadata.annotations[crossplane.io/external-name]
+                policy:
+                  # fromFieldPath: Required means patch only applies if field exists
+                  # If bucketName is omitted, the next patch generates a name
+                  fromFieldPath: Optional
+
+              # --- Auto-generate bucket name from UID if bucketName not set ---
               - type: FromCompositeFieldPath
                 fromFieldPath: metadata.uid
                 toFieldPath: metadata.annotations[crossplane.io/external-name]
@@ -31,7 +82,88 @@ spec:
                     string:
                       type: Format
                       fmt: "bucket-%s"
+                policy:
+                  fromFieldPath: Optional
 
+              # --- Deletion policy: from developer input ---
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.deletionPolicy
+                toFieldPath: spec.deletionPolicy
+
+              # --- Connection secret name: unique per composite ---
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.uid
+                toFieldPath: spec.writeConnectionSecretToRef.name
+                transforms:
+                  - type: string
+                    string:
+                      type: Format
+                      fmt: "bucket-conn-%s"
+
+              # --- Mandatory platform tags (always applied) ---
+              # These cannot be overridden by developers
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.labels[crossplane.io/composite]
+                toFieldPath: spec.forProvider.tags[platform/composite-name]
+
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.region
+                toFieldPath: spec.forProvider.tags[platform/region]
+
+              # Static mandatory tag — always set by platform
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: spec.forProvider.tags[platform/managed-by]
+                transforms:
+                  - type: string
+                    string:
+                      type: Format
+                      fmt: "crossplane"
+
+              # --- Developer-provided tags (merged on top of platform tags) ---
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.tags
+                toFieldPath: spec.forProvider.tags
+                policy:
+                  fromFieldPath: Optional
+
+              # --- Write bucket name back to XR status ---
+              - type: ToCompositeFieldPath
+                fromFieldPath: metadata.annotations[crossplane.io/external-name]
+                toFieldPath: status.bucketName
+
+              # --- Write bucket ARN back to XR status ---
+              - type: ToCompositeFieldPath
+                fromFieldPath: status.atProvider.arn
+                toFieldPath: status.bucketArn
+
+              # --- Write region back to XR status ---
+              - type: ToCompositeFieldPath
+                fromFieldPath: spec.forProvider.region
+                toFieldPath: status.region
+
+            # Expose connection details (bucketName, bucketArn, region, endpoint)
+            # These become available as a Kubernetes Secret to the developer's namespace
+            connectionDetails:
+              - name: bucketName
+                fromFieldPath: metadata.annotations[crossplane.io/external-name]
+                type: FromFieldPath
+              - name: bucketArn
+                fromFieldPath: status.atProvider.arn
+                type: FromFieldPath
+              - name: region
+                fromFieldPath: spec.forProvider.region
+                type: FromFieldPath
+              - name: endpoint
+                fromFieldPath: status.atProvider.websiteEndpoint
+                type: FromFieldPath
+
+          # ============================================================
+          # RESOURCE 2: Public Access Block
+          # Blocks all public access by default
+          # Developer can set spec.parameters.blockPublicAccess: false
+          # only for static website hosting use cases
+          # ============================================================
           - name: s3-public-access-block
             base:
               apiVersion: s3.aws.upbound.io/v1beta1
@@ -43,5 +175,166 @@ spec:
                   blockPublicPolicy: true
                   ignorePublicAcls: true
                   restrictPublicBuckets: true
+                  # Automatically links to the S3 bucket in this Composition
                   bucketSelector:
                     matchControllerRef: true
+
+            patches:
+              # --- Region must match the bucket ---
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.region
+                toFieldPath: spec.forProvider.region
+
+              # --- Allow developer to disable public block (e.g. static sites) ---
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.blockPublicAccess
+                toFieldPath: spec.forProvider.blockPublicAcls
+
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.blockPublicAccess
+                toFieldPath: spec.forProvider.blockPublicPolicy
+
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.blockPublicAccess
+                toFieldPath: spec.forProvider.ignorePublicAcls
+
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.blockPublicAccess
+                toFieldPath: spec.forProvider.restrictPublicBuckets
+
+          # ============================================================
+          # RESOURCE 3: Server-Side Encryption
+          # Defaults to SSE-S3 (AES-256)
+          # If developer provides kmsKeyId, uses SSE-KMS instead
+          # ============================================================
+          - name: s3-encryption
+            base:
+              apiVersion: s3.aws.upbound.io/v1beta1
+              kind: BucketServerSideEncryptionConfiguration
+              spec:
+                forProvider:
+                  region: us-east-1
+                  bucketSelector:
+                    matchControllerRef: true
+                  rule:
+                    - applyServerSideEncryptionByDefault:
+                        - sseAlgorithm: AES256
+                      bucketKeyEnabled: true
+
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.region
+                toFieldPath: spec.forProvider.region
+
+              # --- Switch to SSE-KMS if developer provides a KMS key ---
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.encryption.kmsKeyId
+                toFieldPath: spec.forProvider.rule[0].applyServerSideEncryptionByDefault[0].kmsMasterKeyId
+                policy:
+                  fromFieldPath: Optional
+
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.encryption.kmsKeyId
+                toFieldPath: spec.forProvider.rule[0].applyServerSideEncryptionByDefault[0].sseAlgorithm
+                transforms:
+                  - type: string
+                    string:
+                      type: Convert
+                      convert: ToString
+                  # If kmsKeyId is set, override algorithm to aws:kms
+                  - type: map
+                    map:
+                      "": "AES256"       # no KMS key = AES256
+                      default: "aws:kms" # any KMS key = aws:kms
+                policy:
+                  fromFieldPath: Optional
+
+          # ============================================================
+          # RESOURCE 4: Versioning
+          # Off by default — developer sets spec.parameters.versioning: true
+          # ============================================================
+          - name: s3-versioning
+            base:
+              apiVersion: s3.aws.upbound.io/v1beta1
+              kind: BucketVersioning
+              spec:
+                forProvider:
+                  region: us-east-1
+                  bucketSelector:
+                    matchControllerRef: true
+                  versioningConfiguration:
+                    - status: Suspended
+
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.region
+                toFieldPath: spec.forProvider.region
+
+              # --- Map boolean true/false → "Enabled"/"Suspended" ---
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.versioning
+                toFieldPath: spec.forProvider.versioningConfiguration[0].status
+                transforms:
+                  - type: map
+                    map:
+                      "true": "Enabled"
+                      "false": "Suspended"
+
+          # ============================================================
+          # RESOURCE 5: Lifecycle Rules
+          # Only applied when spec.parameters.lifecycle.enabled: true
+          # ============================================================
+          - name: s3-lifecycle
+            base:
+              apiVersion: s3.aws.upbound.io/v1beta1
+              kind: BucketLifecycleConfiguration
+              spec:
+                forProvider:
+                  region: us-east-1
+                  bucketSelector:
+                    matchControllerRef: true
+                  rule:
+                    - id: platform-default-lifecycle
+                      status: Enabled
+                      expiration:
+                        - days: 365
+                      noncurrentVersionExpiration:
+                        - noncurrentDays: 90
+
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.region
+                toFieldPath: spec.forProvider.region
+
+              # --- Expiration days from developer input ---
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.lifecycle.expirationDays
+                toFieldPath: spec.forProvider.rule[0].expiration[0].days
+                policy:
+                  fromFieldPath: Optional
+
+              # --- Non-current version expiration (when versioning is on) ---
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.lifecycle.noncurrentVersionExpirationDays
+                toFieldPath: spec.forProvider.rule[0].noncurrentVersionExpiration[0].noncurrentDays
+                policy:
+                  fromFieldPath: Optional
+
+              # --- Enable/disable the rule based on developer input ---
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.lifecycle.enabled
+                toFieldPath: spec.forProvider.rule[0].status
+                transforms:
+                  - type: map
+                    map:
+                      "true": "Enabled"
+                      "false": "Disabled"
+
+    # ----------------------------------------------------------------
+    # STEP 2 — Auto-Ready
+    # Marks the XR as Ready when all managed resources are ready
+    # Without this, the XR stays in an unknown state even when healthy
+    # ----------------------------------------------------------------
+    - step: automatically-detect-ready-composed-resources
+      functionRef:
+        name: function-auto-ready
