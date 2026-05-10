@@ -2,7 +2,7 @@ apiVersion: aws.platform.upbound.io/v1alpha1
 kind: Bucket
 metadata:
   name: my-app-storage
-  namespace: my-team
+  namespace: dev-tem
   labels:
     app: my-app
     env: production
@@ -39,7 +39,7 @@ spec:
     tags:
       cost-center: "engineering"
       project: "my-app"
-      team: "my-team"
+      team: "dev-tem"
 
 
     deletionPolicy: Delete
