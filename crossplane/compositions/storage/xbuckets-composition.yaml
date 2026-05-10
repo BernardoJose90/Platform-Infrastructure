@@ -132,7 +132,7 @@ spec:
 
           # ============================================================
           # RESOURCE 2: Public Access Block
-          # bool → bool, no map transform needed, patch directly
+          # bool → bool, patch directly, no transform needed
           # ============================================================
           - name: s3-public-access-block
             base:
@@ -153,7 +153,7 @@ spec:
                 fromFieldPath: spec.parameters.region
                 toFieldPath: spec.forProvider.region
 
-              # bool → bool: no convert or map transform needed
+
               - type: FromCompositeFieldPath
                 fromFieldPath: spec.parameters.blockPublicAccess
                 toFieldPath: spec.forProvider.blockPublicAcls
@@ -198,23 +198,12 @@ spec:
                 policy:
                   fromFieldPath: Optional
 
-              - type: FromCompositeFieldPath
-                fromFieldPath: spec.parameters.encryption.kmsKeyId
-                toFieldPath: spec.forProvider.rule[0].applyServerSideEncryptionByDefault[0].sseAlgorithm
-                transforms:
-                  - type: convert
-                    convert:
-                      toType: string
-                  - type: map
-                    map:
-                      "": "AES256"
-                      default: "aws:kms"
-                policy:
-                  fromFieldPath: Optional
+
 
           # ============================================================
           # RESOURCE 4: Versioning
-          # FIX: bool → convert to string first → then map transform
+          # FIX: string enum in XRD matches AWS value directly
+          # "Enabled" / "Suspended" — no transform needed at all
           # ============================================================
           - name: s3-versioning
             base:
@@ -233,23 +222,16 @@ spec:
                 fromFieldPath: spec.parameters.region
                 toFieldPath: spec.forProvider.region
 
+              # No transforms — string patches directly onto string
               - type: FromCompositeFieldPath
                 fromFieldPath: spec.parameters.versioning
                 toFieldPath: spec.forProvider.versioningConfiguration[0].status
-                transforms:
-                  # FIX STEP 1: convert bool → string ("true" / "false")
-                  - type: convert
-                    convert:
-                      toType: string
-                  # FIX STEP 2: map string → S3 expected value
-                  - type: map
-                    map:
-                      "true": "Enabled"
-                      "false": "Suspended"
+
 
           # ============================================================
           # RESOURCE 5: Lifecycle Rules
-          # FIX: bool → convert to string first → then map transform
+          # FIX: string enum in XRD matches AWS value directly
+          # "Enabled" / "Disabled" — no transform needed at all
           # ============================================================
           - name: s3-lifecycle
             base:
@@ -262,7 +244,7 @@ spec:
                     matchControllerRef: true
                   rule:
                     - id: platform-default-lifecycle
-                      status: Enabled
+                      status: Disabled
                       expiration:
                         - days: 365
                       noncurrentVersionExpiration:
@@ -285,19 +267,11 @@ spec:
                 policy:
                   fromFieldPath: Optional
 
+              # No transforms — string patches directly onto string
               - type: FromCompositeFieldPath
                 fromFieldPath: spec.parameters.lifecycle.enabled
                 toFieldPath: spec.forProvider.rule[0].status
-                transforms:
-                  # FIX STEP 1: convert bool → string ("true" / "false")
-                  - type: convert
-                    convert:
-                      toType: string
-                  # FIX STEP 2: map string → S3 expected value
-                  - type: map
-                    map:
-                      "true": "Enabled"
-                      "false": "Disabled"
+
 
     # ----------------------------------------------------------------
     # STEP 2 — Auto Ready

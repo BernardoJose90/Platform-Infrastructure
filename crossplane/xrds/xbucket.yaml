@@ -2,35 +2,24 @@ apiVersion: apiextensions.crossplane.io/v1
 kind: CompositeResourceDefinition
 metadata:
   name: xbuckets.aws.platform.upbound.io
-  # Labels allow platform teams to filter/organize XRDs
   labels:
     platform/capability: storage
     platform/provider: aws
     platform/tier: standard
   annotations:
-    # Document who owns this and where to get help
     platform/owner: "platform-engineering"
     platform/slack-channel: "#platform-support"
     platform/runbook: "https://wiki.company.com/platform/s3"
 
 spec:
-  # The API group developers will use in their YAML:
-  # apiVersion: aws.platform.upbound.io/v1alpha1
   group: aws.platform.upbound.io
-
-  # Defines the cluster-scoped Composite Resource (XR)
   names:
     kind: XBucket
     plural: xbuckets
-
-  # Defines the namespace-scoped Claim
-  # This is what developers actually write in their team namespace
   claimNames:
     kind: Bucket
     plural: buckets
 
-  # Which namespaces can create Claims
-  # Remove this block to allow ALL namespaces
   connectionSecretKeys:
     - endpoint
     - bucketName
@@ -39,13 +28,9 @@ spec:
 
   versions:
     - name: v1alpha1
-      # served: true = this version is active and accessible via Kubernetes API
       served: true
-      # referenceable: true = Compositions reference this version
-      # Only ONE version can be referenceable at a time
       referenceable: true
 
-      # additionalPrinterColumns adds extra columns to `kubectl get buckets`
       additionalPrinterColumns:
         - name: REGION
           type: string
@@ -68,12 +53,8 @@ spec:
           type: object
           properties:
 
-            # -------------------------------------------------------
-            # SPEC — what developers configure
-            # -------------------------------------------------------
             spec:
               type: object
-              # Forces developers to always provide these fields
               required:
                 - parameters
               properties:
@@ -84,34 +65,34 @@ spec:
                     - region
                   properties:
 
-                    # --- Region ---
                     region:
                       type: string
                       description: "AWS region to deploy the S3 bucket in."
-                      # Restricts to approved regions only — prevents
-                      # developers from deploying to unapproved regions
                       enum:
                         - us-east-1
+                        - us-west-2
                         - eu-west-1
+                        - eu-central-1
+                        - ap-southeast-1
                       default: us-east-1
 
-                    # --- Bucket Name Override ---
-                    # If not set, Crossplane generates a name automatically
                     bucketName:
                       type: string
                       description: "Optional custom name for the S3 bucket. Must be globally unique. If omitted, a name is auto-generated."
                       minLength: 3
                       maxLength: 63
-                      # S3 bucket naming rules enforced at the API level
                       pattern: "^[a-z0-9][a-z0-9-]*[a-z0-9]$"
 
-                    # --- Versioning ---
+                    # CHANGED: string enum instead of boolean
+                    # Value matches exactly what AWS S3 expects — no transform needed
                     versioning:
-                      type: boolean
-                      description: "Enable S3 object versioning. Recommended for production workloads. Cannot be disabled once enabled."
-                      default: false
+                      type: string
+                      description: "Enable S3 object versioning. Use Enabled or Suspended."
+                      enum:
+                        - "Enabled"
+                        - "Suspended"
+                      default: "Suspended"
 
-                    # --- Encryption ---
                     encryption:
                       type: object
                       description: "Server-side encryption configuration."
@@ -126,21 +107,24 @@ spec:
                       default:
                         enabled: true
 
-                    # --- Public Access Block ---
                     blockPublicAccess:
                       type: boolean
-                      description: "Block all public access to the bucket. Strongly recommended — only set to false for static website hosting use cases."
+                      description: "Block all public access to the bucket. Strongly recommended."
                       default: true
 
-                    # --- Lifecycle Rules ---
                     lifecycle:
                       type: object
                       description: "Object lifecycle management configuration."
                       properties:
+                        # CHANGED: string enum instead of boolean
+                        # Value matches exactly what AWS S3 expects — no transform needed
                         enabled:
-                          type: boolean
-                          description: "Enable lifecycle rules."
-                          default: false
+                          type: string
+                          description: "Enable lifecycle rules. Use Enabled or Disabled."
+                          enum:
+                            - "Enabled"
+                            - "Disabled"
+                          default: "Disabled"
                         expirationDays:
                           type: integer
                           description: "Number of days after which objects are deleted."
@@ -148,14 +132,13 @@ spec:
                           maximum: 3650
                         noncurrentVersionExpirationDays:
                           type: integer
-                          description: "Days after which non-current object versions are deleted. Only applies when versioning is enabled."
+                          description: "Days after which non-current object versions are deleted. Only applies when versioning is Enabled."
                           minimum: 1
                           maximum: 3650
 
-                    # --- CORS ---
                     cors:
                       type: object
-                      description: "Cross-Origin Resource Sharing (CORS) configuration. Required for browser-based access."
+                      description: "Cross-Origin Resource Sharing (CORS) configuration."
                       properties:
                         enabled:
                           type: boolean
@@ -172,52 +155,35 @@ spec:
                             type: string
                             enum: [GET, PUT, POST, DELETE, HEAD]
 
-                    # --- Tags ---
-                    # Tags are critical for cost allocation, compliance, and governance
                     tags:
                       type: object
-                      description: "Additional AWS tags to apply to the bucket. Platform adds mandatory tags (team, environment, managed-by) automatically via the Composition."
+                      description: "Additional AWS tags to apply to the bucket."
                       additionalProperties:
                         type: string
-                      example:
-                        cost-center: "engineering"
-                        project: "my-app"
 
-                    # --- Deletion Policy ---
                     deletionPolicy:
                       type: string
-                      description: "What happens to the AWS bucket when this resource is deleted. Delete removes the real bucket. Orphan leaves it in AWS."
+                      description: "What happens to the AWS bucket when this resource is deleted."
                       enum:
                         - Delete
                         - Orphan
                       default: Delete
 
-            # -------------------------------------------------------
-            # STATUS — outputs written back by the Composition
-            # Developers can read these after the bucket is created
-            # -------------------------------------------------------
             status:
               type: object
               properties:
-
                 bucketName:
                   type: string
                   description: "The actual name of the created S3 bucket in AWS."
-
                 bucketArn:
                   type: string
-                  description: "The ARN of the created S3 bucket (e.g. arn:aws:s3:::my-bucket)."
-
+                  description: "The ARN of the created S3 bucket."
                 region:
                   type: string
                   description: "The AWS region where the bucket was created."
-
                 endpoint:
                   type: string
                   description: "The S3 bucket endpoint URL."
-
-                # Standard Crossplane conditions — always include these
-                # They power the READY and SYNCED columns
                 conditions:
                   type: array
                   description: "Crossplane conditions reflecting the health of this resource."
