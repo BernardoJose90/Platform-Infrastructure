@@ -4,7 +4,7 @@ metadata:
   # Name of the Claim — does not have to match the bucket name
   name: my-app-storage
   # Claims are namespace-scoped — deploy into your team's namespace
-  namespace: my-team
+  namespace: dev-team
   labels:
     app: my-app
     env: production
