@@ -19,9 +19,6 @@ spec:
 
   pipeline:
 
-    # ----------------------------------------------------------------
-    # STEP 1 — Patch and Transform
-    # ----------------------------------------------------------------
     - step: patch-and-transform
       functionRef:
         name: function-patch-and-transform
@@ -132,7 +129,7 @@ spec:
 
           # ============================================================
           # RESOURCE 2: Public Access Block
-          # bool → bool, patch directly, no transform needed
+          # bool → bool, no transform needed
           # ============================================================
           - name: s3-public-access-block
             base:
@@ -153,7 +150,6 @@ spec:
                 fromFieldPath: spec.parameters.region
                 toFieldPath: spec.forProvider.region
 
-
               - type: FromCompositeFieldPath
                 fromFieldPath: spec.parameters.blockPublicAccess
                 toFieldPath: spec.forProvider.blockPublicAcls
@@ -172,6 +168,7 @@ spec:
 
           # ============================================================
           # RESOURCE 3: Server-Side Encryption
+          # AES256 by default, SSE-KMS if kmsKeyId is provided
           # ============================================================
           - name: s3-encryption
             base:
@@ -198,12 +195,9 @@ spec:
                 policy:
                   fromFieldPath: Optional
 
-
-
           # ============================================================
           # RESOURCE 4: Versioning
-          # FIX: string enum in XRD matches AWS value directly
-          # "Enabled" / "Suspended" — no transform needed at all
+          # string "Enabled" / "Suspended" patches directly — no transform
           # ============================================================
           - name: s3-versioning
             base:
@@ -222,16 +216,14 @@ spec:
                 fromFieldPath: spec.parameters.region
                 toFieldPath: spec.forProvider.region
 
-              # No transforms — string patches directly onto string
               - type: FromCompositeFieldPath
                 fromFieldPath: spec.parameters.versioning
                 toFieldPath: spec.forProvider.versioningConfiguration[0].status
 
-
           # ============================================================
-          # RESOURCE 5: Lifecycle Rules
-          # FIX: string enum in XRD matches AWS value directly
-          # "Enabled" / "Disabled" — no transform needed at all
+          # RESOURCE 5: Lifecycle — always Enabled, no toggle
+          # Avoids the Terraform provider bug caused by Disabled status
+          # Teams only control the expiration values, not the on/off
           # ============================================================
           - name: s3-lifecycle
             base:
@@ -244,38 +236,38 @@ spec:
                     matchControllerRef: true
                   rule:
                     - id: platform-default-lifecycle
-                      status: Disabled
+                      # Hardcoded to Enabled — never Disabled
+                      # This avoids the provider read bug entirely
+                      status: Enabled
                       expiration:
                         - days: 365
                       noncurrentVersionExpiration:
                         - noncurrentDays: 90
+                      abortIncompleteMultipartUpload:
+                        - daysAfterInitiation: 7
 
             patches:
               - type: FromCompositeFieldPath
                 fromFieldPath: spec.parameters.region
                 toFieldPath: spec.forProvider.region
 
+              # Patch expiration days from developer input
               - type: FromCompositeFieldPath
                 fromFieldPath: spec.parameters.lifecycle.expirationDays
                 toFieldPath: spec.forProvider.rule[0].expiration[0].days
                 policy:
                   fromFieldPath: Optional
 
+              # Patch non-current version expiration from developer input
               - type: FromCompositeFieldPath
                 fromFieldPath: spec.parameters.lifecycle.noncurrentVersionExpirationDays
                 toFieldPath: spec.forProvider.rule[0].noncurrentVersionExpiration[0].noncurrentDays
                 policy:
                   fromFieldPath: Optional
 
-              # No transforms — string patches directly onto string
+              # Patch multipart upload abort days from developer input
               - type: FromCompositeFieldPath
-                fromFieldPath: spec.parameters.lifecycle.enabled
-                toFieldPath: spec.forProvider.rule[0].status
-
-
-    # ----------------------------------------------------------------
-    # STEP 2 — Auto Ready
-    # ----------------------------------------------------------------
-    - step: automatically-detect-ready-composed-resources
-      functionRef:
-        name: function-auto-ready
+                fromFieldPath: spec.parameters.lifecycle.abortIncompleteMultipartUploadDays
+                toFieldPath: spec.forProvider.rule[0].abortIncompleteMultipartUpload[0].daysAfterInitiation
+                policy:
+                  fromFieldPath: Optional

@@ -9,41 +9,22 @@ metadata:
 
 spec:
   parameters:
-
-    # Required
     region: us-east-1
-
-    # Optional: custom bucket name — globally unique in AWS
-    # bucketName: my-company-my-app-storage-prod
-
-    # CHANGED: string instead of boolean — "Enabled" or "Suspended"
     versioning: "Enabled"
-
-    # Encryption — AES256 by default
-    # Uncomment for KMS:
-    # encryption:
-    #   enabled: true
-    #   kmsKeyId: "arn:aws:kms:us-east-1:123456789012:key/your-key-id"
-
-    # Keep true unless static website hosting
     blockPublicAccess: true
 
-    # CHANGED: lifecycle.enabled is now a string — "Enabled" or "Disabled"
+    # Lifecycle is always Enabled — just control the retention values
     lifecycle:
-      enabled: "Enabled"
       expirationDays: 365
-
       noncurrentVersionExpirationDays: 90
-
+      abortIncompleteMultipartUploadDays: 7
 
     tags:
       cost-center: "engineering"
       project: "my-app"
-      team: "dev-tem"
-
+      team: "dev-team"
 
     deletionPolicy: Delete
-
 
   writeConnectionSecretToRef:
     name: my-app-storage-secret

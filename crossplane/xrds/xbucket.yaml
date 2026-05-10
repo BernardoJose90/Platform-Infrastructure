@@ -70,18 +70,16 @@ spec:
                       description: "AWS region to deploy the S3 bucket in."
                       enum:
                         - us-east-1
-                        - eu-west-1
+                        - eu-west-2
                       default: us-east-1
 
                     bucketName:
                       type: string
-                      description: "Optional custom name for the S3 bucket. Must be globally unique. If omitted, a name is auto-generated."
+                      description: "Optional custom bucket name. Must be globally unique. If omitted, auto-generated."
                       minLength: 3
                       maxLength: 63
                       pattern: "^[a-z0-9][a-z0-9-]*[a-z0-9]$"
 
-                    # CHANGED: string enum instead of boolean
-                    # Value matches exactly what AWS S3 expects — no transform needed
                     versioning:
                       type: string
                       description: "Enable S3 object versioning. Use Enabled or Suspended."
@@ -94,63 +92,44 @@ spec:
                       type: object
                       description: "Server-side encryption configuration."
                       properties:
-                        enabled:
-                          type: boolean
-                          description: "Enable server-side encryption (SSE-S3 by default)."
-                          default: true
                         kmsKeyId:
                           type: string
-                          description: "Optional KMS Key ID or ARN for SSE-KMS encryption. If omitted, SSE-S3 (AES-256) is used."
-                      default:
-                        enabled: true
+                          description: "Optional KMS Key ARN for SSE-KMS. If omitted, SSE-S3 (AES-256) is used."
+                      default: {}
 
                     blockPublicAccess:
                       type: boolean
-                      description: "Block all public access to the bucket. Strongly recommended."
+                      description: "Block all public access. Keep true unless static website hosting."
                       default: true
 
+                    # Lifecycle is always Enabled — no toggle
+                    # Teams only control the expiration values
                     lifecycle:
                       type: object
-                      description: "Object lifecycle management configuration."
+                      description: "Lifecycle rules are always enabled. Control how long objects are retained."
                       properties:
-                        # CHANGED: string enum instead of boolean
-                        # Value matches exactly what AWS S3 expects — no transform needed
-                        enabled:
-                          type: string
-                          description: "Enable lifecycle rules. Use Enabled or Disabled."
-                          enum:
-                            - "Enabled"
-                            - "Disabled"
-                          default: "Disabled"
                         expirationDays:
                           type: integer
-                          description: "Number of days after which objects are deleted."
+                          description: "Days after which objects are permanently deleted."
                           minimum: 1
                           maximum: 3650
+                          default: 365
                         noncurrentVersionExpirationDays:
                           type: integer
-                          description: "Days after which non-current object versions are deleted. Only applies when versioning is Enabled."
+                          description: "Days after which non-current versions are deleted. Effective when versioning is Enabled."
                           minimum: 1
                           maximum: 3650
-
-                    cors:
-                      type: object
-                      description: "Cross-Origin Resource Sharing (CORS) configuration."
-                      properties:
-                        enabled:
-                          type: boolean
-                          default: false
-                        allowedOrigins:
-                          type: array
-                          description: "List of allowed origins (e.g. https://app.company.com)."
-                          items:
-                            type: string
-                        allowedMethods:
-                          type: array
-                          description: "Allowed HTTP methods."
-                          items:
-                            type: string
-                            enum: [GET, PUT, POST, DELETE, HEAD]
+                          default: 90
+                        abortIncompleteMultipartUploadDays:
+                          type: integer
+                          description: "Days after which incomplete multipart uploads are aborted. Prevents unexpected storage costs."
+                          minimum: 1
+                          maximum: 30
+                          default: 7
+                      default:
+                        expirationDays: 365
+                        noncurrentVersionExpirationDays: 90
+                        abortIncompleteMultipartUploadDays: 7
 
                     tags:
                       type: object
@@ -160,7 +139,7 @@ spec:
 
                     deletionPolicy:
                       type: string
-                      description: "What happens to the AWS bucket when this resource is deleted."
+                      description: "Delete removes the real AWS bucket. Orphan leaves it in AWS."
                       enum:
                         - Delete
                         - Orphan
@@ -183,7 +162,6 @@ spec:
                   description: "The S3 bucket endpoint URL."
                 conditions:
                   type: array
-                  description: "Crossplane conditions reflecting the health of this resource."
                   items:
                     type: object
                     properties:
