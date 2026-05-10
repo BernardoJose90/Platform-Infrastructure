@@ -222,8 +222,19 @@ spec:
 
           # ============================================================
           # RESOURCE 5: Lifecycle — always Enabled, no toggle
-          # Avoids the Terraform provider bug caused by Disabled status
-          # Teams only control the expiration values, not the on/off
+          #
+          # FIX: uses spec.forProvider.bucket (patched from status.bucketName)
+          # instead of bucketSelector: matchControllerRef: true
+          #
+          # Root cause: bucketSelector triggers a "Missing Resource Identity
+          # After Read" bug in the Terraform AWS provider for this resource.
+          # Patching the bucket name directly from status.bucketName (which
+          # is written back by the s3-bucket ToCompositeFieldPath patch) fixes
+          # this because:
+          # 1. The lifecycle resource only reconciles after the bucket name
+          #    is available in status (policy: Optional delays it)
+          # 2. It references the bucket by its AWS external name directly,
+          #    bypassing the broken selector read path in the provider
           # ============================================================
           - name: s3-lifecycle
             base:
@@ -232,12 +243,9 @@ spec:
               spec:
                 forProvider:
                   region: us-east-1
-                  bucketSelector:
-                    matchControllerRef: true
+                  bucket: ""
                   rule:
                     - id: platform-default-lifecycle
-                      # Hardcoded to Enabled — never Disabled
-                      # This avoids the provider read bug entirely
                       status: Enabled
                       expiration:
                         - days: 365
@@ -251,21 +259,26 @@ spec:
                 fromFieldPath: spec.parameters.region
                 toFieldPath: spec.forProvider.region
 
-              # Patch expiration days from developer input
+              # Patch bucket name from XR status — written back by s3-bucket resource
+              # policy: Optional means this waits until status.bucketName is available
+              - type: FromCompositeFieldPath
+                fromFieldPath: status.bucketName
+                toFieldPath: spec.forProvider.bucket
+                policy:
+                  fromFieldPath: Optional
+
               - type: FromCompositeFieldPath
                 fromFieldPath: spec.parameters.lifecycle.expirationDays
                 toFieldPath: spec.forProvider.rule[0].expiration[0].days
                 policy:
                   fromFieldPath: Optional
 
-              # Patch non-current version expiration from developer input
               - type: FromCompositeFieldPath
                 fromFieldPath: spec.parameters.lifecycle.noncurrentVersionExpirationDays
                 toFieldPath: spec.forProvider.rule[0].noncurrentVersionExpiration[0].noncurrentDays
                 policy:
                   fromFieldPath: Optional
 
-              # Patch multipart upload abort days from developer input
               - type: FromCompositeFieldPath
                 fromFieldPath: spec.parameters.lifecycle.abortIncompleteMultipartUploadDays
                 toFieldPath: spec.forProvider.rule[0].abortIncompleteMultipartUpload[0].daysAfterInitiation
