@@ -33,6 +33,8 @@ spec:
 
           # ============================================================
           # RESOURCE 1: S3 Bucket
+          # Creates first — status.bucketName is written back once ready
+          # All other resources wait for status.bucketName via policy: Required
           # ============================================================
           - name: s3-bucket
             base:
@@ -105,6 +107,8 @@ spec:
                 policy:
                   fromFieldPath: Optional
 
+              # Write bucket name back to XR status
+              # All dependent resources below wait for this field
               - type: ToCompositeFieldPath
                 fromFieldPath: metadata.annotations[crossplane.io/external-name]
                 toFieldPath: status.bucketName
@@ -133,7 +137,9 @@ spec:
 
           # ============================================================
           # RESOURCE 2: Public Access Block
-          # bool → bool, no transform needed
+          # FIX: switched from bucketSelector to bucket + status.bucketName
+          # policy: Required blocks this resource until bucket exists in AWS
+          # Prevents "NoSuchBucket" race condition on parallel creation
           # ============================================================
           - name: s3-public-access-block
             base:
@@ -142,17 +148,23 @@ spec:
               spec:
                 forProvider:
                   region: us-east-1
+                  bucket: ""
                   blockPublicAcls: true
                   blockPublicPolicy: true
                   ignorePublicAcls: true
                   restrictPublicBuckets: true
-                  bucketSelector:
-                    matchControllerRef: true
 
             patches:
               - type: FromCompositeFieldPath
                 fromFieldPath: spec.parameters.region
                 toFieldPath: spec.forProvider.region
+
+              # Waits until bucket exists in AWS before applying
+              - type: FromCompositeFieldPath
+                fromFieldPath: status.bucketName
+                toFieldPath: spec.forProvider.bucket
+                policy:
+                  fromFieldPath: Required
 
               - type: FromCompositeFieldPath
                 fromFieldPath: spec.parameters.blockPublicAccess
@@ -172,7 +184,9 @@ spec:
 
           # ============================================================
           # RESOURCE 3: Server-Side Encryption
-          # AES256 by default, SSE-KMS if kmsKeyId is provided
+          # FIX: switched from bucketSelector to bucket + status.bucketName
+          # policy: Required blocks this resource until bucket exists in AWS
+          # Prevents "NoSuchBucket" 404 on PutBucketEncryption
           # ============================================================
           - name: s3-encryption
             base:
@@ -181,8 +195,7 @@ spec:
               spec:
                 forProvider:
                   region: us-east-1
-                  bucketSelector:
-                    matchControllerRef: true
+                  bucket: ""
                   rule:
                     - applyServerSideEncryptionByDefault:
                         - sseAlgorithm: AES256
@@ -193,6 +206,13 @@ spec:
                 fromFieldPath: spec.parameters.region
                 toFieldPath: spec.forProvider.region
 
+              # Waits until bucket exists in AWS before applying
+              - type: FromCompositeFieldPath
+                fromFieldPath: status.bucketName
+                toFieldPath: spec.forProvider.bucket
+                policy:
+                  fromFieldPath: Required
+
               - type: FromCompositeFieldPath
                 fromFieldPath: spec.parameters.encryption.kmsKeyId
                 toFieldPath: spec.forProvider.rule[0].applyServerSideEncryptionByDefault[0].kmsMasterKeyId
@@ -201,7 +221,9 @@ spec:
 
           # ============================================================
           # RESOURCE 4: Versioning
-          # string "Enabled" / "Suspended" patches directly — no transform
+          # FIX: switched from bucketSelector to bucket + status.bucketName
+          # policy: Required blocks this resource until bucket exists in AWS
+          # Prevents "NoSuchBucket" race condition on parallel creation
           # ============================================================
           - name: s3-versioning
             base:
@@ -210,8 +232,7 @@ spec:
               spec:
                 forProvider:
                   region: us-east-1
-                  bucketSelector:
-                    matchControllerRef: true
+                  bucket: ""
                   versioningConfiguration:
                     - status: Suspended
 
@@ -219,6 +240,13 @@ spec:
               - type: FromCompositeFieldPath
                 fromFieldPath: spec.parameters.region
                 toFieldPath: spec.forProvider.region
+
+              # Waits until bucket exists in AWS before applying
+              - type: FromCompositeFieldPath
+                fromFieldPath: status.bucketName
+                toFieldPath: spec.forProvider.bucket
+                policy:
+                  fromFieldPath: Required
 
               - type: FromCompositeFieldPath
                 fromFieldPath: spec.parameters.versioning
