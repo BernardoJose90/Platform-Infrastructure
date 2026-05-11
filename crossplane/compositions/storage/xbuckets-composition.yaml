@@ -9,6 +9,10 @@ metadata:
   annotations:
     platform/owner: "platform-engineering"
     platform/slack-channel: "#platform-support"
+    # NOTE: BucketLifecycleConfiguration removed due to a known bug in
+    # upbound/provider-aws-s3 v2.x — "Missing Resource Identity After Read"
+    # Lifecycle rules are applied directly via AWS CLI as a workaround.
+    # Track fix: https://github.com/crossplane-contrib/provider-upjet-aws/issues
 
 spec:
   compositeTypeRef:
@@ -219,68 +223,3 @@ spec:
               - type: FromCompositeFieldPath
                 fromFieldPath: spec.parameters.versioning
                 toFieldPath: spec.forProvider.versioningConfiguration[0].status
-
-          # ============================================================
-          # RESOURCE 5: Lifecycle — always Enabled, no toggle
-          #
-          # FIX: uses spec.forProvider.bucket (patched from status.bucketName)
-          # instead of bucketSelector: matchControllerRef: true
-          #
-          # Root cause: bucketSelector triggers a "Missing Resource Identity
-          # After Read" bug in the Terraform AWS provider for this resource.
-          # Patching the bucket name directly from status.bucketName (which
-          # is written back by the s3-bucket ToCompositeFieldPath patch) fixes
-          # this because:
-          # 1. The lifecycle resource only reconciles after the bucket name
-          #    is available in status (policy: Optional delays it)
-          # 2. It references the bucket by its AWS external name directly,
-          #    bypassing the broken selector read path in the provider
-          # ============================================================
-          - name: s3-lifecycle
-            base:
-              apiVersion: s3.aws.upbound.io/v1beta1
-              kind: BucketLifecycleConfiguration
-              spec:
-                forProvider:
-                  region: us-east-1
-                  bucket: ""
-                  rule:
-                    - id: platform-default-lifecycle
-                      status: Enabled
-                      expiration:
-                        - days: 365
-                      noncurrentVersionExpiration:
-                        - noncurrentDays: 90
-                      abortIncompleteMultipartUpload:
-                        - daysAfterInitiation: 7
-
-            patches:
-              - type: FromCompositeFieldPath
-                fromFieldPath: spec.parameters.region
-                toFieldPath: spec.forProvider.region
-
-              # Patch bucket name from XR status — written back by s3-bucket resource
-              # policy: Optional means this waits until status.bucketName is available
-              - type: FromCompositeFieldPath
-                fromFieldPath: status.bucketName
-                toFieldPath: spec.forProvider.bucket
-                policy:
-                  fromFieldPath: Optional
-
-              - type: FromCompositeFieldPath
-                fromFieldPath: spec.parameters.lifecycle.expirationDays
-                toFieldPath: spec.forProvider.rule[0].expiration[0].days
-                policy:
-                  fromFieldPath: Optional
-
-              - type: FromCompositeFieldPath
-                fromFieldPath: spec.parameters.lifecycle.noncurrentVersionExpirationDays
-                toFieldPath: spec.forProvider.rule[0].noncurrentVersionExpiration[0].noncurrentDays
-                policy:
-                  fromFieldPath: Optional
-
-              - type: FromCompositeFieldPath
-                fromFieldPath: spec.parameters.lifecycle.abortIncompleteMultipartUploadDays
-                toFieldPath: spec.forProvider.rule[0].abortIncompleteMultipartUpload[0].daysAfterInitiation
-                policy:
-                  fromFieldPath: Optional
