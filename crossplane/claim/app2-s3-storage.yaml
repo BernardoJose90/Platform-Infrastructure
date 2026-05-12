@@ -1,0 +1,24 @@
+apiVersion: aws.platform.upbound.io/v1alpha1
+kind: Bucket
+metadata:
+  name: app2-storage
+  namespace: dev-team
+  labels:
+    app: my-app
+    env: production
+
+spec:
+  parameters:
+    region: eu-west-2
+    versioning: "Enabled"
+    blockPublicAccess: true
+    
+    tags:
+      cost-center: "engineering"
+      project: "my-app2"
+      team: "dev-team"
+
+    deletionPolicy: Delete
+
+  writeConnectionSecretToRef:
+    name: app2-storage-secret
