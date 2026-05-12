@@ -3,22 +3,15 @@ kind: Bucket
 metadata:
   name: my-app-storage
   namespace: dev-team
-  labels:
-    app: my-app
-    env: production
-
 spec:
   parameters:
     region: us-east-1
     versioning: "Enabled"
     blockPublicAccess: true
-    
+    serviceIamRole: "my-app-service-role"  # ← new, optional
     tags:
       cost-center: "engineering"
-      project: "my-app"
       team: "dev-team"
-
     deletionPolicy: Delete
-
   writeConnectionSecretToRef:
     name: my-app-storage-secret

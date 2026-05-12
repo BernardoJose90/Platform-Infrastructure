@@ -101,7 +101,17 @@ spec:
                       type: boolean
                       description: "Block all public access. Keep true unless static website hosting."
                       default: true
-                      
+
+                    # -------------------------------------------------------
+                    # NEW: IAM role to attach the bucket access policy to.
+                    # Optional — if omitted, the IAM policy is still created
+                    # but not attached to any role.
+                    # Example: "my-app-service-role"
+                    # -------------------------------------------------------
+                    serviceIamRole:
+                      type: string
+                      description: "Name of the IAM role to attach the bucket access policy to. Typically the role assumed by the app's service account (IRSA)."
+
                     tags:
                       type: object
                       description: "Additional AWS tags to apply to the bucket."
@@ -131,6 +141,9 @@ spec:
                 endpoint:
                   type: string
                   description: "The S3 bucket endpoint URL."
+                iamPolicyArn:
+                  type: string
+                  description: "The ARN of the IAM policy created for bucket access."
                 conditions:
                   type: array
                   items:
