@@ -392,7 +392,8 @@ spec:
                   region: eu-west-2
                   destinationCidrBlock: "0.0.0.0/0"
                   gatewayId: ""
-                  routeTableId: ""
+                  routeTableIdRef:
+                    name: ""
 
             patches:
               - type: FromCompositeFieldPath
@@ -409,14 +410,20 @@ spec:
                 policy:
                   fromFieldPath: Required
 
+              # Reference the route table composed resource by name
               - type: FromCompositeFieldPath
-                fromFieldPath: status.vpcId
-                toFieldPath: spec.forProvider.vpcId
-                policy:
-                  fromFieldPath: Required
+                fromFieldPath: metadata.name
+                toFieldPath: spec.forProvider.routeTableIdRef.name
+                transforms:
+                  - type: string
+                    string:
+                      type: Format
+                      fmt: "%s-route-table-public"
 
           # ============================================================
           # RESOURCE 9: Route Table Association — public-2a
+          # Uses routeTableIdRef and subnetIdRef to reference sibling
+          # resources by their composed resource name
           # ============================================================
           - name: rta-public-2a
             base:
@@ -426,8 +433,10 @@ spec:
                 deletionPolicy: Delete
                 forProvider:
                   region: eu-west-2
-                  subnetId: ""
-                  routeTableId: ""
+                  routeTableIdRef:
+                    name: ""
+                  subnetIdRef:
+                    name: ""
 
             patches:
               - type: FromCompositeFieldPath
@@ -438,11 +447,25 @@ spec:
                 fromFieldPath: spec.parameters.deletionPolicy
                 toFieldPath: spec.deletionPolicy
 
+              # Reference the route table composed resource by name
               - type: FromCompositeFieldPath
-                fromFieldPath: status.vpcId
-                toFieldPath: spec.forProvider.vpcId
-                policy:
-                  fromFieldPath: Required
+                fromFieldPath: metadata.name
+                toFieldPath: spec.forProvider.routeTableIdRef.name
+                transforms:
+                  - type: string
+                    string:
+                      type: Format
+                      fmt: "%s-route-table-public"
+
+              # Reference the public-2a subnet composed resource by name
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: spec.forProvider.subnetIdRef.name
+                transforms:
+                  - type: string
+                    string:
+                      type: Format
+                      fmt: "%s-subnet-public-2a"
 
           # ============================================================
           # RESOURCE 10: Route Table Association — public-2b
@@ -455,8 +478,10 @@ spec:
                 deletionPolicy: Delete
                 forProvider:
                   region: eu-west-2
-                  subnetId: ""
-                  routeTableId: ""
+                  routeTableIdRef:
+                    name: ""
+                  subnetIdRef:
+                    name: ""
 
             patches:
               - type: FromCompositeFieldPath
@@ -467,8 +492,22 @@ spec:
                 fromFieldPath: spec.parameters.deletionPolicy
                 toFieldPath: spec.deletionPolicy
 
+              # Reference the route table composed resource by name
               - type: FromCompositeFieldPath
-                fromFieldPath: status.vpcId
-                toFieldPath: spec.forProvider.vpcId
-                policy:
-                  fromFieldPath: Required
+                fromFieldPath: metadata.name
+                toFieldPath: spec.forProvider.routeTableIdRef.name
+                transforms:
+                  - type: string
+                    string:
+                      type: Format
+                      fmt: "%s-route-table-public"
+
+              # Reference the public-2b subnet composed resource by name
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: spec.forProvider.subnetIdRef.name
+                transforms:
+                  - type: string
+                    string:
+                      type: Format
+                      fmt: "%s-subnet-public-2b"
