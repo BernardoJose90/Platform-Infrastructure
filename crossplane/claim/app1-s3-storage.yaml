@@ -12,13 +12,7 @@ spec:
     region: us-east-1
     versioning: "Enabled"
     blockPublicAccess: true
-
-    # Lifecycle is always Enabled — just control the retention values
-    lifecycle:
-      expirationDays: 365
-      noncurrentVersionExpirationDays: 90
-      abortIncompleteMultipartUploadDays: 7
-
+    
     tags:
       cost-center: "engineering"
       project: "my-app"
