@@ -1,0 +1,18 @@
+apiVersion: aws.platform.upbound.io/v1alpha1
+kind: Vpc
+metadata:
+  name: dev-team-vpc
+  namespace: dev-team
+  labels:
+    app: dev-team
+    env: production
+spec:
+  parameters:
+    region: eu-west-2
+    cidr: "10.0.0.0/16"
+    tags:
+      cost-center: "engineering"
+      team: "dev-team"
+    deletionPolicy: Delete
+  writeConnectionSecretToRef:
+    name: dev-team-vpc-secret

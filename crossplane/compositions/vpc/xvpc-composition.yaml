@@ -1,0 +1,479 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: xvpcs.aws.platform.upbound.io
+  labels:
+    platform/capability: networking
+    platform/provider: aws
+    platform/tier: standard
+  annotations:
+    platform/owner: "platform-engineering"
+    platform/slack-channel: "#platform-support"
+
+spec:
+  compositeTypeRef:
+    apiVersion: aws.platform.upbound.io/v1alpha1
+    kind: XVpc
+
+  mode: Pipeline
+
+  pipeline:
+
+    - step: patch-and-transform
+      functionRef:
+        name: function-patch-and-transform
+      input:
+        apiVersion: pt.fn.crossplane.io/v1beta1
+        kind: Resources
+        resources:
+
+          # ============================================================
+          # RESOURCE 1: VPC
+          # Created first — status.vpcId is written back once ready.
+          # All dependent resources wait for status.vpcId via policy: Required.
+          # CIDR: 10.0.0.0/16 (from claim)
+          # ============================================================
+          - name: vpc
+            base:
+              apiVersion: ec2.aws.upbound.io/v1beta1
+              kind: VPC
+              spec:
+                deletionPolicy: Delete
+                forProvider:
+                  region: eu-west-2
+                  cidrBlock: "10.0.0.0/16"
+                  enableDnsHostnames: true
+                  enableDnsSupport: true
+                  tags:
+                    Name: ""
+
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.region
+                toFieldPath: spec.forProvider.region
+
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.cidr
+                toFieldPath: spec.forProvider.cidrBlock
+
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.deletionPolicy
+                toFieldPath: spec.deletionPolicy
+
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.labels[crossplane.io/claim-name]
+                toFieldPath: spec.forProvider.tags[Name]
+                transforms:
+                  - type: string
+                    string:
+                      type: Format
+                      fmt: "%s-vpc"
+
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.tags
+                toFieldPath: spec.forProvider.tags
+                policy:
+                  fromFieldPath: Optional
+
+              # Write VPC ID back to XR status — all resources below wait for this
+              - type: ToCompositeFieldPath
+                fromFieldPath: status.atProvider.id
+                toFieldPath: status.vpcId
+
+              - type: ToCompositeFieldPath
+                fromFieldPath: spec.forProvider.region
+                toFieldPath: status.region
+
+          # ============================================================
+          # RESOURCE 2: Internet Gateway
+          # Waits for VPC to exist via policy: Required on vpcId
+          # ============================================================
+          - name: internet-gateway
+            base:
+              apiVersion: ec2.aws.upbound.io/v1beta1
+              kind: InternetGateway
+              spec:
+                deletionPolicy: Delete
+                forProvider:
+                  region: eu-west-2
+                  vpcId: ""
+                  tags:
+                    Name: ""
+
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.region
+                toFieldPath: spec.forProvider.region
+
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.deletionPolicy
+                toFieldPath: spec.deletionPolicy
+
+              # Waits until VPC exists before creating IGW
+              - type: FromCompositeFieldPath
+                fromFieldPath: status.vpcId
+                toFieldPath: spec.forProvider.vpcId
+                policy:
+                  fromFieldPath: Required
+
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.labels[crossplane.io/claim-name]
+                toFieldPath: spec.forProvider.tags[Name]
+                transforms:
+                  - type: string
+                    string:
+                      type: Format
+                      fmt: "%s-igw"
+
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.tags
+                toFieldPath: spec.forProvider.tags
+                policy:
+                  fromFieldPath: Optional
+
+              - type: ToCompositeFieldPath
+                fromFieldPath: status.atProvider.id
+                toFieldPath: status.internetGatewayId
+
+          # ============================================================
+          # RESOURCE 3: Public Subnet (eu-west-2a)
+          # CIDR: 10.0.1.0/24 — fixed slice of the VPC CIDR
+          # mapPublicIpOnLaunch: true so instances get public IPs
+          # ============================================================
+          - name: subnet-public-2a
+            base:
+              apiVersion: ec2.aws.upbound.io/v1beta1
+              kind: Subnet
+              spec:
+                deletionPolicy: Delete
+                forProvider:
+                  region: eu-west-2
+                  availabilityZone: eu-west-2a
+                  cidrBlock: "10.0.1.0/24"
+                  mapPublicIpOnLaunch: true
+                  vpcId: ""
+                  tags:
+                    Name: ""
+                    platform/subnet-type: public
+
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.region
+                toFieldPath: spec.forProvider.region
+
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.deletionPolicy
+                toFieldPath: spec.deletionPolicy
+
+              - type: FromCompositeFieldPath
+                fromFieldPath: status.vpcId
+                toFieldPath: spec.forProvider.vpcId
+                policy:
+                  fromFieldPath: Required
+
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.labels[crossplane.io/claim-name]
+                toFieldPath: spec.forProvider.tags[Name]
+                transforms:
+                  - type: string
+                    string:
+                      type: Format
+                      fmt: "%s-public-2a"
+
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.tags
+                toFieldPath: spec.forProvider.tags
+                policy:
+                  fromFieldPath: Optional
+
+          # ============================================================
+          # RESOURCE 4: Public Subnet (eu-west-2b)
+          # CIDR: 10.0.2.0/24
+          # ============================================================
+          - name: subnet-public-2b
+            base:
+              apiVersion: ec2.aws.upbound.io/v1beta1
+              kind: Subnet
+              spec:
+                deletionPolicy: Delete
+                forProvider:
+                  region: eu-west-2
+                  availabilityZone: eu-west-2b
+                  cidrBlock: "10.0.2.0/24"
+                  mapPublicIpOnLaunch: true
+                  vpcId: ""
+                  tags:
+                    Name: ""
+                    platform/subnet-type: public
+
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.region
+                toFieldPath: spec.forProvider.region
+
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.deletionPolicy
+                toFieldPath: spec.deletionPolicy
+
+              - type: FromCompositeFieldPath
+                fromFieldPath: status.vpcId
+                toFieldPath: spec.forProvider.vpcId
+                policy:
+                  fromFieldPath: Required
+
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.labels[crossplane.io/claim-name]
+                toFieldPath: spec.forProvider.tags[Name]
+                transforms:
+                  - type: string
+                    string:
+                      type: Format
+                      fmt: "%s-public-2b"
+
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.tags
+                toFieldPath: spec.forProvider.tags
+                policy:
+                  fromFieldPath: Optional
+
+          # ============================================================
+          # RESOURCE 5: Private Subnet (eu-west-2a)
+          # CIDR: 10.0.3.0/24
+          # mapPublicIpOnLaunch: false — no public IPs
+          # ============================================================
+          - name: subnet-private-2a
+            base:
+              apiVersion: ec2.aws.upbound.io/v1beta1
+              kind: Subnet
+              spec:
+                deletionPolicy: Delete
+                forProvider:
+                  region: eu-west-2
+                  availabilityZone: eu-west-2a
+                  cidrBlock: "10.0.3.0/24"
+                  mapPublicIpOnLaunch: false
+                  vpcId: ""
+                  tags:
+                    Name: ""
+                    platform/subnet-type: private
+
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.region
+                toFieldPath: spec.forProvider.region
+
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.deletionPolicy
+                toFieldPath: spec.deletionPolicy
+
+              - type: FromCompositeFieldPath
+                fromFieldPath: status.vpcId
+                toFieldPath: spec.forProvider.vpcId
+                policy:
+                  fromFieldPath: Required
+
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.labels[crossplane.io/claim-name]
+                toFieldPath: spec.forProvider.tags[Name]
+                transforms:
+                  - type: string
+                    string:
+                      type: Format
+                      fmt: "%s-private-2a"
+
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.tags
+                toFieldPath: spec.forProvider.tags
+                policy:
+                  fromFieldPath: Optional
+
+          # ============================================================
+          # RESOURCE 6: Private Subnet (eu-west-2b)
+          # CIDR: 10.0.4.0/24
+          # ============================================================
+          - name: subnet-private-2b
+            base:
+              apiVersion: ec2.aws.upbound.io/v1beta1
+              kind: Subnet
+              spec:
+                deletionPolicy: Delete
+                forProvider:
+                  region: eu-west-2
+                  availabilityZone: eu-west-2b
+                  cidrBlock: "10.0.4.0/24"
+                  mapPublicIpOnLaunch: false
+                  vpcId: ""
+                  tags:
+                    Name: ""
+                    platform/subnet-type: private
+
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.region
+                toFieldPath: spec.forProvider.region
+
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.deletionPolicy
+                toFieldPath: spec.deletionPolicy
+
+              - type: FromCompositeFieldPath
+                fromFieldPath: status.vpcId
+                toFieldPath: spec.forProvider.vpcId
+                policy:
+                  fromFieldPath: Required
+
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.labels[crossplane.io/claim-name]
+                toFieldPath: spec.forProvider.tags[Name]
+                transforms:
+                  - type: string
+                    string:
+                      type: Format
+                      fmt: "%s-private-2b"
+
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.tags
+                toFieldPath: spec.forProvider.tags
+                policy:
+                  fromFieldPath: Optional
+
+          # ============================================================
+          # RESOURCE 7: Public Route Table
+          # Routes 0.0.0.0/0 traffic to the Internet Gateway
+          # ============================================================
+          - name: route-table-public
+            base:
+              apiVersion: ec2.aws.upbound.io/v1beta1
+              kind: RouteTable
+              spec:
+                deletionPolicy: Delete
+                forProvider:
+                  region: eu-west-2
+                  vpcId: ""
+                  tags:
+                    Name: ""
+
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.region
+                toFieldPath: spec.forProvider.region
+
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.deletionPolicy
+                toFieldPath: spec.deletionPolicy
+
+              - type: FromCompositeFieldPath
+                fromFieldPath: status.vpcId
+                toFieldPath: spec.forProvider.vpcId
+                policy:
+                  fromFieldPath: Required
+
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.labels[crossplane.io/claim-name]
+                toFieldPath: spec.forProvider.tags[Name]
+                transforms:
+                  - type: string
+                    string:
+                      type: Format
+                      fmt: "%s-public-rt"
+
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.tags
+                toFieldPath: spec.forProvider.tags
+                policy:
+                  fromFieldPath: Optional
+
+          # ============================================================
+          # RESOURCE 8: Default Route → IGW
+          # Sends 0.0.0.0/0 to the Internet Gateway
+          # Waits for both IGW and route table via policy: Required
+          # ============================================================
+          - name: route-public-igw
+            base:
+              apiVersion: ec2.aws.upbound.io/v1beta1
+              kind: Route
+              spec:
+                deletionPolicy: Delete
+                forProvider:
+                  region: eu-west-2
+                  destinationCidrBlock: "0.0.0.0/0"
+                  gatewayId: ""
+                  routeTableId: ""
+
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.region
+                toFieldPath: spec.forProvider.region
+
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.deletionPolicy
+                toFieldPath: spec.deletionPolicy
+
+              - type: FromCompositeFieldPath
+                fromFieldPath: status.internetGatewayId
+                toFieldPath: spec.forProvider.gatewayId
+                policy:
+                  fromFieldPath: Required
+
+              - type: FromCompositeFieldPath
+                fromFieldPath: status.vpcId
+                toFieldPath: spec.forProvider.vpcId
+                policy:
+                  fromFieldPath: Required
+
+          # ============================================================
+          # RESOURCE 9 & 10: Route Table Associations
+          # Associates each public subnet with the public route table
+          # Uses routeTableIdRef to reference the route table by name
+          # ============================================================
+          - name: rta-public-2a
+            base:
+              apiVersion: ec2.aws.upbound.io/v1beta1
+              kind: RouteTableAssociation
+              spec:
+                deletionPolicy: Delete
+                forProvider:
+                  region: eu-west-2
+                  subnetId: ""
+                  routeTableId: ""
+
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.region
+                toFieldPath: spec.forProvider.region
+
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.deletionPolicy
+                toFieldPath: spec.deletionPolicy
+
+              - type: FromCompositeFieldPath
+                fromFieldPath: status.vpcId
+                toFieldPath: spec.forProvider.vpcId
+                policy:
+                  fromFieldPath: Required
+
+          - name: rta-public-2b
+            base:
+              apiVersion: ec2.aws.upbound.io/v1beta1
+              kind: RouteTableAssociation
+              spec:
+                deletionPolicy: Delete
+                forProvider:
+                  region: eu-west-2
+                  subnetId: ""
+                  routeTableId: ""
+
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.region
+                toFieldPath: spec.forProvider.region
+
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.deletionPolicy
+                toFieldPath: spec.deletionPolicy
+
+              - type: FromCompositeFieldPath
+                fromFieldPath: status.vpcId
+                toFieldPath: spec.forProvider.vpcId
+                policy:
+                  fromFieldPath: Required
