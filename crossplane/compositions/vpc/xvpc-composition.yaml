@@ -2,13 +2,14 @@ apiVersion: apiextensions.crossplane.io/v1
 kind: Composition
 metadata:
   name: xvpcs.aws.platform.upbound.io
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+    platform/owner: "platform-engineering"
+    platform/slack-channel: "#platform-support"
   labels:
     platform/capability: networking
     platform/provider: aws
     platform/tier: standard
-  annotations:
-    platform/owner: "platform-engineering"
-    platform/slack-channel: "#platform-support"
 
 spec:
   compositeTypeRef:
@@ -31,7 +32,6 @@ spec:
           # RESOURCE 1: VPC
           # Created first — status.vpcId is written back once ready.
           # All dependent resources wait for status.vpcId via policy: Required.
-          # CIDR: 10.0.0.0/16 (from claim)
           # ============================================================
           - name: vpc
             base:
@@ -75,7 +75,6 @@ spec:
                 policy:
                   fromFieldPath: Optional
 
-              # Write VPC ID back to XR status — all resources below wait for this
               - type: ToCompositeFieldPath
                 fromFieldPath: status.atProvider.id
                 toFieldPath: status.vpcId
@@ -109,7 +108,6 @@ spec:
                 fromFieldPath: spec.parameters.deletionPolicy
                 toFieldPath: spec.deletionPolicy
 
-              # Waits until VPC exists before creating IGW
               - type: FromCompositeFieldPath
                 fromFieldPath: status.vpcId
                 toFieldPath: spec.forProvider.vpcId
@@ -137,8 +135,7 @@ spec:
 
           # ============================================================
           # RESOURCE 3: Public Subnet (eu-west-2a)
-          # CIDR: 10.0.1.0/24 — fixed slice of the VPC CIDR
-          # mapPublicIpOnLaunch: true so instances get public IPs
+          # CIDR: 10.0.1.0/24
           # ============================================================
           - name: subnet-public-2a
             base:
@@ -239,7 +236,6 @@ spec:
           # ============================================================
           # RESOURCE 5: Private Subnet (eu-west-2a)
           # CIDR: 10.0.3.0/24
-          # mapPublicIpOnLaunch: false — no public IPs
           # ============================================================
           - name: subnet-private-2a
             base:
@@ -339,7 +335,6 @@ spec:
 
           # ============================================================
           # RESOURCE 7: Public Route Table
-          # Routes 0.0.0.0/0 traffic to the Internet Gateway
           # ============================================================
           - name: route-table-public
             base:
@@ -385,8 +380,7 @@ spec:
 
           # ============================================================
           # RESOURCE 8: Default Route → IGW
-          # Sends 0.0.0.0/0 to the Internet Gateway
-          # Waits for both IGW and route table via policy: Required
+          # Waits for both IGW and VPC via policy: Required
           # ============================================================
           - name: route-public-igw
             base:
@@ -422,9 +416,7 @@ spec:
                   fromFieldPath: Required
 
           # ============================================================
-          # RESOURCE 9 & 10: Route Table Associations
-          # Associates each public subnet with the public route table
-          # Uses routeTableIdRef to reference the route table by name
+          # RESOURCE 9: Route Table Association — public-2a
           # ============================================================
           - name: rta-public-2a
             base:
@@ -452,6 +444,9 @@ spec:
                 policy:
                   fromFieldPath: Required
 
+          # ============================================================
+          # RESOURCE 10: Route Table Association — public-2b
+          # ============================================================
           - name: rta-public-2b
             base:
               apiVersion: ec2.aws.upbound.io/v1beta1

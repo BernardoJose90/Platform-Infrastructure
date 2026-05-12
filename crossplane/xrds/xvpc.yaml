@@ -2,14 +2,15 @@ apiVersion: apiextensions.crossplane.io/v1
 kind: CompositeResourceDefinition
 metadata:
   name: xvpcs.aws.platform.upbound.io
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+    platform/owner: "platform-engineering"
+    platform/slack-channel: "#platform-support"
+    platform/runbook: "https://wiki.company.com/platform/vpc"
   labels:
     platform/capability: networking
     platform/provider: aws
     platform/tier: standard
-  annotations:
-    platform/owner: "platform-engineering"
-    platform/slack-channel: "#platform-support"
-    platform/runbook: "https://wiki.company.com/platform/vpc"
 
 spec:
   group: aws.platform.upbound.io
