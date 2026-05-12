@@ -101,36 +101,7 @@ spec:
                       type: boolean
                       description: "Block all public access. Keep true unless static website hosting."
                       default: true
-
-                    # Lifecycle is always Enabled — no toggle
-                    # Teams only control the expiration values
-                    lifecycle:
-                      type: object
-                      description: "Lifecycle rules are always enabled. Control how long objects are retained."
-                      properties:
-                        expirationDays:
-                          type: integer
-                          description: "Days after which objects are permanently deleted."
-                          minimum: 1
-                          maximum: 3650
-                          default: 365
-                        noncurrentVersionExpirationDays:
-                          type: integer
-                          description: "Days after which non-current versions are deleted. Effective when versioning is Enabled."
-                          minimum: 1
-                          maximum: 3650
-                          default: 90
-                        abortIncompleteMultipartUploadDays:
-                          type: integer
-                          description: "Days after which incomplete multipart uploads are aborted. Prevents unexpected storage costs."
-                          minimum: 1
-                          maximum: 30
-                          default: 7
-                      default:
-                        expirationDays: 365
-                        noncurrentVersionExpirationDays: 90
-                        abortIncompleteMultipartUploadDays: 7
-
+                      
                     tags:
                       type: object
                       description: "Additional AWS tags to apply to the bucket."
