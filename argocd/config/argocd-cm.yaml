@@ -4,6 +4,12 @@ metadata:
 data:
   # custom health checks
   # resource exclusions
+  resource.exclusions: |
+    - apiGroups:
+      - "*"
+      kinds:
+      - ProviderConfigUsage
   # repository settings
   # SSO configuration
   # OIDC settings
+  application.resourceTrackingMethod: annotation
