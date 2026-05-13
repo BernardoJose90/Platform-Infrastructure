@@ -1,15 +1,27 @@
+# argocd/apps/config/argocd-cm.yaml
+apiVersion: v1
 kind: ConfigMap
 metadata:
   name: argocd-cm
+  namespace: argocd
 data:
-  # custom health checks
-  # resource exclusions
+  # -------------------------------------------------------
+  # CROSSPLANE INTEGRATION (required)
+  # Source: https://docs.crossplane.io/latest/guides/crossplane-with-argo-cd/
+  # -------------------------------------------------------
+
+  # Prevents ownership conflicts between ArgoCD and Crossplane
+  # generated resources. Annotation tracking is unique to ArgoCD
+  # so no other tool can clash with it
+  application.resourceTrackingMethod: annotation
+
+  # Excludes Crossplane auto-generated ProviderConfigUsage resources
+  # from ArgoCD tracking. Crossplane creates one per managed resource
+  # (every S3, RDS, etc.) — without this exclusion ArgoCD hammers
+  # the Kubernetes API watching thousands of resources it doesn't own
   resource.exclusions: |
     - apiGroups:
       - "*"
       kinds:
       - ProviderConfigUsage
-  # repository settings
-  # SSO configuration
-  # OIDC settings
-  application.resourceTrackingMethod: annotation
+      
