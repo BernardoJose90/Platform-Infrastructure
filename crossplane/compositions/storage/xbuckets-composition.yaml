@@ -33,8 +33,6 @@ spec:
 
           # ============================================================
           # RESOURCE 1: S3 Bucket
-          # Creates first — status.bucketName is written back once ready.
-          # All other resources wait for status.bucketName via policy: Required.
           # ============================================================
           - name: s3-bucket
             base:
@@ -107,7 +105,6 @@ spec:
                 policy:
                   fromFieldPath: Optional
 
-              # Write bucket name back to XR status
               - type: ToCompositeFieldPath
                 fromFieldPath: metadata.annotations[crossplane.io/external-name]
                 toFieldPath: status.bucketName
@@ -136,7 +133,7 @@ spec:
 
           # ============================================================
           # RESOURCE 2: Public Access Block
-          # Waits for bucket to exist via policy: Required on bucketName
+          # bool → bool, no transform needed
           # ============================================================
           - name: s3-public-access-block
             base:
@@ -145,22 +142,17 @@ spec:
               spec:
                 forProvider:
                   region: us-east-1
-                  bucket: ""
                   blockPublicAcls: true
                   blockPublicPolicy: true
                   ignorePublicAcls: true
                   restrictPublicBuckets: true
+                  bucketSelector:
+                    matchControllerRef: true
 
             patches:
               - type: FromCompositeFieldPath
                 fromFieldPath: spec.parameters.region
                 toFieldPath: spec.forProvider.region
-
-              - type: FromCompositeFieldPath
-                fromFieldPath: status.bucketName
-                toFieldPath: spec.forProvider.bucket
-                policy:
-                  fromFieldPath: Required
 
               - type: FromCompositeFieldPath
                 fromFieldPath: spec.parameters.blockPublicAccess
@@ -180,7 +172,7 @@ spec:
 
           # ============================================================
           # RESOURCE 3: Server-Side Encryption
-          # Waits for bucket to exist via policy: Required on bucketName
+          # AES256 by default, SSE-KMS if kmsKeyId is provided
           # ============================================================
           - name: s3-encryption
             base:
@@ -189,7 +181,8 @@ spec:
               spec:
                 forProvider:
                   region: us-east-1
-                  bucket: ""
+                  bucketSelector:
+                    matchControllerRef: true
                   rule:
                     - applyServerSideEncryptionByDefault:
                         - sseAlgorithm: AES256
@@ -201,12 +194,6 @@ spec:
                 toFieldPath: spec.forProvider.region
 
               - type: FromCompositeFieldPath
-                fromFieldPath: status.bucketName
-                toFieldPath: spec.forProvider.bucket
-                policy:
-                  fromFieldPath: Required
-
-              - type: FromCompositeFieldPath
                 fromFieldPath: spec.parameters.encryption.kmsKeyId
                 toFieldPath: spec.forProvider.rule[0].applyServerSideEncryptionByDefault[0].kmsMasterKeyId
                 policy:
@@ -214,7 +201,7 @@ spec:
 
           # ============================================================
           # RESOURCE 4: Versioning
-          # Waits for bucket to exist via policy: Required on bucketName
+          # string "Enabled" / "Suspended" patches directly — no transform
           # ============================================================
           - name: s3-versioning
             base:
@@ -223,7 +210,8 @@ spec:
               spec:
                 forProvider:
                   region: us-east-1
-                  bucket: ""
+                  bucketSelector:
+                    matchControllerRef: true
                   versioningConfiguration:
                     - status: Suspended
 
@@ -233,133 +221,5 @@ spec:
                 toFieldPath: spec.forProvider.region
 
               - type: FromCompositeFieldPath
-                fromFieldPath: status.bucketName
-                toFieldPath: spec.forProvider.bucket
-                policy:
-                  fromFieldPath: Required
-
-              - type: FromCompositeFieldPath
                 fromFieldPath: spec.parameters.versioning
                 toFieldPath: spec.forProvider.versioningConfiguration[0].status
-
-          # ============================================================
-          # RESOURCE 5: IAM Policy
-          # Creates a scoped IAM policy granting read/write access to
-          # this specific bucket. Waits for bucketArn via policy: Required.
-          # Policy grants: GetObject, PutObject, DeleteObject, ListBucket
-          # ============================================================
-          - name: s3-iam-policy
-            base:
-              apiVersion: iam.aws.upbound.io/v1beta1
-              kind: Policy
-              spec:
-                deletionPolicy: Delete
-                forProvider:
-                  name: ""
-                  document: ""
-
-            patches:
-              - type: FromCompositeFieldPath
-                fromFieldPath: spec.parameters.deletionPolicy
-                toFieldPath: spec.deletionPolicy
-
-              # Policy name derived from claim name
-              - type: FromCompositeFieldPath
-                fromFieldPath: metadata.labels[crossplane.io/claim-name]
-                toFieldPath: spec.forProvider.name
-                transforms:
-                  - type: string
-                    string:
-                      type: Format
-                      fmt: "%s-s3-access-policy"
-
-              # Build the IAM policy document using the bucket ARN
-              # Waits for bucketArn to be written back from the bucket resource
-              - type: CombineFromComposite
-                combine:
-                  variables:
-                    - fromFieldPath: status.bucketArn
-                    - fromFieldPath: status.bucketArn
-                  strategy: string
-                  string:
-                    fmt: |
-                      {
-                        "Version": "2012-10-17",
-                        "Statement": [
-                          {
-                            "Effect": "Allow",
-                            "Action": [
-                              "s3:GetObject",
-                              "s3:GetObjectVersion",
-                              "s3:PutObject",
-                              "s3:DeleteObject"
-                            ],
-                            "Resource": "%s/*"
-                          },
-                          {
-                            "Effect": "Allow",
-                            "Action": [
-                              "s3:ListBucket",
-                              "s3:GetBucketLocation",
-                              "s3:GetBucketVersioning"
-                            ],
-                            "Resource": "%s"
-                          }
-                        ]
-                      }
-                toFieldPath: spec.forProvider.document
-                policy:
-                  fromFieldPath: Required
-
-              # Write policy ARN back to XR status for reference
-              - type: ToCompositeFieldPath
-                fromFieldPath: status.atProvider.arn
-                toFieldPath: status.iamPolicyArn
-
-              - type: FromCompositeFieldPath
-                fromFieldPath: spec.parameters.tags
-                toFieldPath: spec.forProvider.tags
-                policy:
-                  fromFieldPath: Optional
-
-          # ============================================================
-          # RESOURCE 6: IAM Role Policy Attachment
-          # Attaches the bucket policy to the developer's service IAM role.
-          # OPTIONAL — only created if spec.parameters.serviceIamRole is set.
-          # Uses policy: Optional so missing serviceIamRole is not an error.
-          # ============================================================
-          - name: s3-iam-role-policy-attachment
-            base:
-              apiVersion: iam.aws.upbound.io/v1beta1
-              kind: RolePolicyAttachment
-              spec:
-                deletionPolicy: Delete
-                forProvider:
-                  policyArnRef:
-                    name: ""
-                  roleNameRef:
-                    name: ""
-
-            patches:
-              - type: FromCompositeFieldPath
-                fromFieldPath: spec.parameters.deletionPolicy
-                toFieldPath: spec.deletionPolicy
-
-              # Reference the IAM policy by the composed resource name
-              - type: FromCompositeFieldPath
-                fromFieldPath: metadata.labels[crossplane.io/claim-name]
-                toFieldPath: spec.forProvider.policyArnRef.name
-                transforms:
-                  - type: string
-                    string:
-                      type: Format
-                      fmt: "%s-s3-access-policy"
-
-              # Reference the IAM role the developer specified
-              # policy: Optional — if serviceIamRole is not set, this
-              # resource will not block the composition from completing
-              - type: FromCompositeFieldPath
-                fromFieldPath: spec.parameters.serviceIamRole
-                toFieldPath: spec.forProvider.roleNameRef.name
-                policy:
-                  fromFieldPath: Optional
