@@ -8,8 +8,6 @@ metadata:
     platform/tier: standard
   annotations:
     platform/owner: "platform-engineering"
-    platform/slack-channel: "#platform-support"
-    platform/runbook: "https://wiki.company.com/platform/s3"
 
 spec:
   group: aws.platform.upbound.io
@@ -71,7 +69,7 @@ spec:
                       enum:
                         - us-east-1
                         - eu-west-2
-                      default: us-east-1
+                      default: eu-west-2
 
                     bucketName:
                       type: string
