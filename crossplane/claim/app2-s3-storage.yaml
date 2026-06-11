@@ -10,6 +10,7 @@ metadata:
 spec:
   parameters:
     region: eu-west-2
+    bucketName: my-custom-bucket-name-24522
     versioning: "Enabled"
     blockPublicAccess: true
     
