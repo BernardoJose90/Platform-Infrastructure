@@ -6,7 +6,7 @@ metadata:
   namespace: argocd
 data:
   # -------------------------------------------------------
-  # CROSSPLANE INTEGRATION (required)
+  # CROSSPLANE INTEGRATION (required for Crossplane to work with ArgoCD)
   # Source: https://docs.crossplane.io/latest/guides/crossplane-with-argo-cd/
   # -------------------------------------------------------
 
